@@ -119,6 +119,7 @@ All data lives in `data/` (gitignored). Override with `PERSONAL_ASSISTANT_DATA_D
 
 | File | Type | Description |
 |---|---|---|
+| `data/inbox.json` | `InboxEntry[]` | Raw captures before parsing |
 | `data/tasks.json` | `Task[]` | Intent backlog |
 | `data/activity-log.json` | `ActivityEntry[]` | Append-only reality log |
 | `data/calendar-mirror.json` | `CalendarMirrorEntry[]` | Audit trail of all Plan-layer writes |
