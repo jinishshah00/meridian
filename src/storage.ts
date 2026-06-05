@@ -35,13 +35,18 @@ function atomicWrite(filePath: string, value: unknown): void {
 }
 
 /**
- * Read and parse a JSON file. Returns `null` when the file does not exist so
- * callers can decide on their own safe default rather than throwing.
+ * Read and parse a JSON file. Returns `null` when the file does not exist or
+ * contains malformed JSON so callers can decide on their own safe default
+ * rather than throwing.
  */
 function readJson<T>(filePath: string): T | null {
   if (!existsSync(filePath)) return null;
   const raw = readFileSync(filePath, "utf8");
-  return JSON.parse(raw) as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────

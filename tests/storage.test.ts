@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync } from "fs";
+import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import type {
   Task,
@@ -380,6 +380,471 @@ describe("missing-file defaults", () => {
 
   it("readPolicy returns object with staleAfterHours=12", () => {
     expect(readPolicy().staleAfterHours).toBe(12);
+  });
+});
+
+// ─── Edge case: corrupt JSON on disk ──────────────────────────────────────────
+
+describe("corrupt JSON recovery", () => {
+  beforeEach(clearTestData);
+
+  it("readTasks returns empty array when tasks.json is malformed", () => {
+    const taskPath = resolve(TEST_DATA_DIR, "tasks.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(taskPath, "{broken", "utf8");
+    expect(readTasks()).toEqual([]);
+  });
+
+  it("readActivityLog returns empty array when activity-log.json is malformed", () => {
+    const logPath = resolve(TEST_DATA_DIR, "activity-log.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(logPath, '{"incomplete":', "utf8");
+    expect(readActivityLog()).toEqual([]);
+  });
+
+  it("readCalendarMirror returns empty array when calendar-mirror.json is malformed", () => {
+    const mirrorPath = resolve(TEST_DATA_DIR, "calendar-mirror.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(mirrorPath, "[1, 2, 3", "utf8");
+    expect(readCalendarMirror()).toEqual([]);
+  });
+
+  it("readCurrentState returns default when current-state.json is malformed", () => {
+    const statePath = resolve(TEST_DATA_DIR, "current-state.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(statePath, "null", "utf8");
+    const state = readCurrentState();
+    expect(state.staleness).toBe("unknown");
+    expect(state.lastObservation).toBe("");
+  });
+
+  it("readPolicy returns default when policy.json is malformed", () => {
+    const policyPath = resolve(TEST_DATA_DIR, "policy.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(policyPath, "!!!", "utf8");
+    const policy = readPolicy();
+    expect(policy.staleAfterHours).toBe(12);
+    expect(policy.bufferMinutes).toBe(15);
+  });
+
+  it("readInbox returns empty array when inbox.json contains invalid JSON", () => {
+    const inboxPath = resolve(TEST_DATA_DIR, "inbox.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(inboxPath, '[unclosed', "utf8");
+    expect(readInbox()).toEqual([]);
+  });
+
+  it("subsequent write after corrupt file overwrites with valid JSON", () => {
+    const tasksPath = resolve(TEST_DATA_DIR, "tasks.json");
+    mkdirSync(TEST_DATA_DIR, { recursive: true });
+    writeFileSync(tasksPath, "corrupt", "utf8");
+
+    const task: Task = {
+      id: "task-after-corrupt",
+      title: "Valid task",
+      status: "todo",
+      priority: 2,
+      tags: [],
+      source: "test",
+      createdAt: "2026-06-04T10:00:00.000Z",
+    };
+    writeTasks([task]);
+
+    const read = readTasks();
+    expect(read).toHaveLength(1);
+    expect(read[0]).toEqual(task);
+  });
+});
+
+// ─── Edge case: concurrent append safety ──────────────────────────────────────
+
+describe("concurrent append safety", () => {
+  beforeEach(clearTestData);
+
+  it("two rapid appendInboxEntry calls preserve both entries", () => {
+    const entries = Array.from({ length: 2 }, (_, i) => ({
+      id: `inbox-concurrent-${i}`,
+      receivedAt: new Date(Date.now() + i * 10).toISOString(),
+      rawText: `message ${i}`,
+      processed: false,
+    }));
+
+    appendInboxEntry(entries[0]);
+    appendInboxEntry(entries[1]);
+
+    const inbox = readInbox();
+    expect(inbox).toHaveLength(2);
+    expect(inbox[0]?.id).toBe("inbox-concurrent-0");
+    expect(inbox[1]?.id).toBe("inbox-concurrent-1");
+  });
+
+  it("ten rapid sequential appends all appear in final read", () => {
+    const entries = Array.from({ length: 10 }, (_, i) => ({
+      id: `inbox-seq-${i}`,
+      receivedAt: new Date(Date.now() + i * 5).toISOString(),
+      rawText: `sequential message ${i}`,
+      processed: false,
+    }));
+
+    for (const entry of entries) {
+      appendInboxEntry(entry);
+    }
+
+    const inbox = readInbox();
+    expect(inbox).toHaveLength(10);
+    for (let i = 0; i < 10; i++) {
+      expect(inbox[i]?.id).toBe(`inbox-seq-${i}`);
+    }
+  });
+
+  it("mixing writes and appends preserves all data", () => {
+    const first: InboxEntry = {
+      id: "inbox-1",
+      receivedAt: "2026-06-04T09:00:00.000Z",
+      rawText: "first batch",
+      processed: false,
+    };
+    writeInbox([first]);
+
+    const second: InboxEntry = {
+      id: "inbox-2",
+      receivedAt: "2026-06-04T09:01:00.000Z",
+      rawText: "appended after write",
+      processed: false,
+    };
+    appendInboxEntry(second);
+
+    const inbox = readInbox();
+    expect(inbox).toHaveLength(2);
+    expect(inbox[0]?.id).toBe("inbox-1");
+    expect(inbox[1]?.id).toBe("inbox-2");
+  });
+});
+
+// ─── Edge case: empty string fields ───────────────────────────────────────────
+
+describe("empty string field preservation", () => {
+  beforeEach(clearTestData);
+
+  it("Task with empty title and source round-trips correctly", () => {
+    const task: Task = {
+      id: "task-empty-fields",
+      title: "",
+      status: "todo",
+      priority: 2,
+      tags: [],
+      source: "",
+      createdAt: "2026-06-04T10:00:00.000Z",
+    };
+    writeTasks([task]);
+    expect(readTasks()[0]).toEqual(task);
+  });
+
+  it("ActivityEntry with empty rawText preserves empty string", () => {
+    const entry: ActivityEntry = {
+      id: "act-empty",
+      timestamp: "2026-06-04T14:00:00.000Z",
+      type: "note",
+      rawText: "",
+      parsedFields: {},
+    };
+    writeActivityLog([entry]);
+    expect(readActivityLog()[0]?.rawText).toBe("");
+  });
+
+  it("InboxEntry with empty rawText does not convert to null", () => {
+    const entry: InboxEntry = {
+      id: "inbox-empty",
+      receivedAt: "2026-06-04T09:00:00.000Z",
+      rawText: "",
+      processed: false,
+    };
+    writeInbox([entry]);
+    const read = readInbox()[0];
+    expect(read?.rawText).toBe("");
+    expect(read?.rawText).not.toBe(null);
+  });
+
+  it("CurrentState with empty lastObservation preserves empty string", () => {
+    const state: CurrentState = {
+      lastObservation: "",
+      lastObservedAt: "2026-06-04T13:00:00.000Z",
+      staleness: "fresh",
+    };
+    writeCurrentState(state);
+    const read = readCurrentState();
+    expect(read.lastObservation).toBe("");
+  });
+
+  it("Task with empty tags array preserves empty array", () => {
+    const task: Task = {
+      id: "task-empty-tags",
+      title: "No tags",
+      status: "todo",
+      priority: 1,
+      tags: [],
+      source: "test",
+      createdAt: "2026-06-04T10:00:00.000Z",
+    };
+    writeTasks([task]);
+    const read = readTasks()[0];
+    expect(read?.tags).toEqual([]);
+  });
+});
+
+// ─── Edge case: large payload ─────────────────────────────────────────────────
+
+describe("large payload handling", () => {
+  beforeEach(clearTestData);
+
+  it("writes and reads 1000 ActivityEntries without data loss", () => {
+    const entries: ActivityEntry[] = Array.from({ length: 1000 }, (_, i) => ({
+      id: `act-${i}`,
+      timestamp: new Date(Date.now() - i * 60000).toISOString(),
+      type: "note",
+      rawText: `Activity entry ${i}`,
+      parsedFields: { index: String(i) },
+    }));
+
+    writeActivityLog(entries);
+    const read = readActivityLog();
+
+    expect(read).toHaveLength(1000);
+    expect(read[0]?.id).toBe("act-0");
+    expect(read[999]?.id).toBe("act-999");
+    for (let i = 0; i < 1000; i++) {
+      expect(read[i]?.id).toBe(`act-${i}`);
+    }
+  });
+
+  it("writes 100 Tasks and reads them back in same order", () => {
+    const tasks: Task[] = Array.from({ length: 100 }, (_, i) => ({
+      id: `task-bulk-${i}`,
+      title: `Task ${i}`,
+      status: "todo",
+      priority: (((i % 3) + 1) as 1 | 2 | 3),
+      tags: [`tag-${i}`, `tag-${i + 1}`],
+      source: `Bulk test message ${i}`,
+      createdAt: new Date(Date.now() - i * 3600000).toISOString(),
+    }));
+
+    writeTasks(tasks);
+    const read = readTasks();
+
+    expect(read).toHaveLength(100);
+    expect(read[0]?.title).toBe("Task 0");
+    expect(read[99]?.title).toBe("Task 99");
+  });
+
+  it("appends 50 InboxEntries one at a time, all preserved", () => {
+    for (let i = 0; i < 50; i++) {
+      appendInboxEntry({
+        id: `inbox-large-${i}`,
+        receivedAt: new Date(Date.now() + i * 1000).toISOString(),
+        rawText: `Message ${i}`,
+        processed: i % 2 === 0,
+      });
+    }
+
+    const inbox = readInbox();
+    expect(inbox).toHaveLength(50);
+    expect(inbox[0]?.id).toBe("inbox-large-0");
+    expect(inbox[49]?.id).toBe("inbox-large-49");
+  });
+});
+
+// ─── Edge case: currentState staleness logic ──────────────────────────────────
+
+describe("staleness field computation", () => {
+  beforeEach(clearTestData);
+
+  it("state with lastObservedAt = now reads back as fresh", () => {
+    const now = new Date().toISOString();
+    const state: CurrentState = {
+      lastObservation: "Just now",
+      lastObservedAt: now,
+      staleness: "fresh",
+    };
+    writeCurrentState(state);
+    const read = readCurrentState();
+    expect(read.staleness).toBe("fresh");
+  });
+
+  it("state with lastObservedAt = 13 hours ago reads back with staleness field", () => {
+    const thirteenHoursAgo = new Date(Date.now() - 13 * 3600000).toISOString();
+    const state: CurrentState = {
+      lastObservation: "Long time ago",
+      lastObservedAt: thirteenHoursAgo,
+      staleness: "stale",
+    };
+    writeCurrentState(state);
+    const read = readCurrentState();
+    expect(read.staleness).toBe("stale");
+  });
+
+  it("state with staleness='unknown' round-trips correctly", () => {
+    const state: CurrentState = {
+      lastObservation: "Never observed",
+      lastObservedAt: new Date(0).toISOString(),
+      staleness: "unknown",
+    };
+    writeCurrentState(state);
+    const read = readCurrentState();
+    expect(read.staleness).toBe("unknown");
+  });
+
+  it("default state has staleness='unknown'", () => {
+    const state = readCurrentState();
+    expect(state.staleness).toBe("unknown");
+  });
+
+  it("all three staleness values are preserved on round-trip", () => {
+    const values: Array<["fresh" | "stale" | "unknown", string]> = [
+      ["fresh", "2026-06-04T13:00:00.000Z"],
+      ["stale", "2026-06-01T13:00:00.000Z"],
+      ["unknown", "1970-01-01T00:00:00.000Z"],
+    ];
+
+    for (const [staleness, timestamp] of values) {
+      const state: CurrentState = {
+        lastObservation: `State ${staleness}`,
+        lastObservedAt: timestamp,
+        staleness,
+      };
+      writeCurrentState(state);
+      expect(readCurrentState().staleness).toBe(staleness);
+    }
+  });
+});
+
+// ─── Edge case: missing data directory ────────────────────────────────────────
+
+describe("missing data directory recreation", () => {
+  it("write creates data directory if it does not exist before write", () => {
+    const task: Task = {
+      id: "task-dir-create",
+      title: "Trigger dir creation",
+      status: "todo",
+      priority: 1,
+      tags: [],
+      source: "test",
+      createdAt: "2026-06-04T10:00:00.000Z",
+    };
+
+    rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+    expect(existsSync(TEST_DATA_DIR)).toBe(false);
+
+    writeTasks([task]);
+
+    expect(existsSync(TEST_DATA_DIR)).toBe(true);
+    expect(readTasks()).toHaveLength(1);
+  });
+
+  it("appendInboxEntry creates directory if missing", () => {
+    rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+    expect(existsSync(TEST_DATA_DIR)).toBe(false);
+
+    appendInboxEntry({
+      id: "inbox-dir-create",
+      receivedAt: "2026-06-04T09:00:00.000Z",
+      rawText: "trigger dir creation",
+      processed: false,
+    });
+
+    expect(existsSync(TEST_DATA_DIR)).toBe(true);
+    expect(readInbox()).toHaveLength(1);
+  });
+
+  it("multiple writes all succeed when starting with missing directory", () => {
+    rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+
+    writeTasks([
+      {
+        id: "task-1",
+        title: "First",
+        status: "todo",
+        priority: 1,
+        tags: [],
+        source: "test",
+        createdAt: "2026-06-04T10:00:00.000Z",
+      },
+    ]);
+
+    writeActivityLog([
+      {
+        id: "act-1",
+        timestamp: "2026-06-04T14:00:00.000Z",
+        type: "note",
+        rawText: "First activity",
+        parsedFields: {},
+      },
+    ]);
+
+    writeCurrentState({
+      lastObservation: "Initialized",
+      lastObservedAt: "2026-06-04T10:00:00.000Z",
+      staleness: "fresh",
+    });
+
+    expect(readTasks()).toHaveLength(1);
+    expect(readActivityLog()).toHaveLength(1);
+    expect(readCurrentState().lastObservation).toBe("Initialized");
+  });
+});
+
+// ─── Edge case: PolicyConfig defaults ──────────────────────────────────────────
+
+describe("PolicyConfig defaults", () => {
+  beforeEach(clearTestData);
+
+  it("readPolicy on missing file returns sensible defaults", () => {
+    const policy = readPolicy();
+    expect(policy.staleAfterHours).toBe(12);
+    expect(policy.bufferMinutes).toBe(15);
+    expect(policy.bufferMinutes).toBeGreaterThan(0);
+    expect(policy.dailyCap).toBe(5);
+    expect(policy.dailyCap).toBeGreaterThan(0);
+    expect(policy.defaultPriority).toBe(2);
+    expect(policy.allowedWindows).toEqual([]);
+    expect(policy.blackoutWindows).toEqual([]);
+  });
+
+  it("default policy has all required fields", () => {
+    const policy = readPolicy();
+    expect(policy).toHaveProperty("staleAfterHours");
+    expect(policy).toHaveProperty("bufferMinutes");
+    expect(policy).toHaveProperty("dailyCap");
+    expect(policy).toHaveProperty("defaultPriority");
+    expect(policy).toHaveProperty("allowedWindows");
+    expect(policy).toHaveProperty("blackoutWindows");
+  });
+
+  it("custom policy with all fields round-trips without modification", () => {
+    const custom: PolicyConfig = {
+      allowedWindows: [
+        { start: "08:00", end: "20:00", days: [1, 2, 3, 4, 5] },
+        { start: "10:00", end: "18:00", days: [0, 6] },
+      ],
+      blackoutWindows: [
+        { start: "12:00", end: "13:00", days: [1, 2, 3, 4, 5] },
+      ],
+      bufferMinutes: 30,
+      dailyCap: 10,
+      staleAfterHours: 6,
+      defaultPriority: 1,
+    };
+    writePolicy(custom);
+    expect(readPolicy()).toEqual(custom);
+  });
+
+  it("default dailyCap is non-zero", () => {
+    const policy = readPolicy();
+    expect(policy.dailyCap).toBeGreaterThan(0);
+  });
+
+  it("default staleAfterHours is positive", () => {
+    const policy = readPolicy();
+    expect(policy.staleAfterHours).toBeGreaterThan(0);
   });
 });
 
