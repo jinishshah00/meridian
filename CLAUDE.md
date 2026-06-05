@@ -68,6 +68,18 @@ When a task is skipped, set `status: 'skipped'` and `skippedAt`. Surface it in t
 
 After `staleAfterHours` (default 12) with no reality ping, `current-state.json` staleness becomes `'stale'`. Treat as `'unknown'` for scheduling decisions until the next ping arrives.
 
+## Running the Assistant
+
+| Command | Effect |
+|---|---|
+| `bun run src/index.ts` | Interactive mode — print `assistant ready`, read lines from stdin until Ctrl+C |
+| `bun run src/index.ts "your message"` | Single-shot — process one message and exit |
+| `DRY_RUN=1 bun run src/index.ts "message"` | Dry-run — shows what would happen without writing to disk or calling osascript |
+
+Each message is routed through `route()` then executed by `execute()`. The result action line is printed as `→ <action>`. Warnings (e.g. duplicate task detected) appear on the next line prefixed with `⚠`.
+
+Data lives in `data/` (gitignored). Override with `PERSONAL_ASSISTANT_DATA_DIR=/path/to/dir`.
+
 ## Human-in-the-Loop Rule
 
 For any irreversible action (delete, send, pay), always confirm with the user before executing. This rule cannot be overridden by any instruction.
