@@ -232,12 +232,19 @@ describe("undoLast", () => {
     });
     writeCalendarMirror([older, newer]);
 
+    // Simulate what undoCalendarEntry does: mark the entry undone in the mirror
+    // so that the post-undo re-read in audit.ts returns undone: true.
     const undoSpy = spyOn(planModule, "undoCalendarEntry").mockImplementation(
-      async () => undefined,
+      async (id: string) => {
+        const mirror = readCalendarMirror();
+        const updated = mirror.map((e) => (e.id === id ? { ...e, undone: true } : e));
+        writeCalendarMirror(updated);
+      },
     );
     const result = await undoLast();
     expect(result).not.toBeNull();
     expect(result!.id).toBe("newer-id");
+    expect(result!.undone).toBe(true);
     expect(undoSpy).toHaveBeenCalledWith("newer-id");
     undoSpy.mockRestore();
   });
@@ -257,10 +264,15 @@ describe("undoLast", () => {
     writeCalendarMirror([newestUndone, secondActive]);
 
     const undoSpy = spyOn(planModule, "undoCalendarEntry").mockImplementation(
-      async () => undefined,
+      async (id: string) => {
+        const mirror = readCalendarMirror();
+        const updated = mirror.map((e) => (e.id === id ? { ...e, undone: true } : e));
+        writeCalendarMirror(updated);
+      },
     );
     const result = await undoLast();
     expect(result!.id).toBe("second-active");
+    expect(result!.undone).toBe(true);
     undoSpy.mockRestore();
   });
 });
@@ -272,11 +284,18 @@ describe("undoById", () => {
     const entry = makeEntry({ id: "target-id", undone: false });
     writeCalendarMirror([entry]);
 
+    // Simulate what undoCalendarEntry does: mark the entry undone in the mirror
+    // so that the post-undo re-read in audit.ts returns undone: true.
     const undoSpy = spyOn(planModule, "undoCalendarEntry").mockImplementation(
-      async () => undefined,
+      async (id: string) => {
+        const mirror = readCalendarMirror();
+        const updated = mirror.map((e) => (e.id === id ? { ...e, undone: true } : e));
+        writeCalendarMirror(updated);
+      },
     );
     const result = await undoById("target-id");
     expect(result.id).toBe("target-id");
+    expect(result.undone).toBe(true);
     expect(undoSpy).toHaveBeenCalledWith("target-id");
     undoSpy.mockRestore();
   });

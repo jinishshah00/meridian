@@ -746,7 +746,10 @@ describe("route — edge case #3: future + time but ambiguous type (no point-ale
     // Has future time, no explicit point-alert keywords, not a reminder phrase
     expect(r.action.type).toBe("createEvent");
     if (r.action.type === "createEvent") {
-      expect(r.action.title).toContain("coffee") || expect(r.action.title).toContain("Sarah");
+      expect(
+        r.action.title.toLowerCase().includes("coffee") ||
+          r.action.title.toLowerCase().includes("sarah"),
+      ).toBe(true);
       expect(r.action.startAt).toBeTruthy();
     }
   });

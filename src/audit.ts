@@ -73,7 +73,11 @@ export async function undoLast(): Promise<CalendarMirrorEntry | null> {
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const entry = active[0]!;
   await undoCalendarEntry(entry.id);
-  return entry;
+  // Re-read the mirror so the returned entry reflects the undone: true state
+  // written by undoCalendarEntry — returning the pre-undo local variable would
+  // give callers a stale undone: false snapshot.
+  const updated = readCalendarMirror().find((e) => e.id === entry.id);
+  return updated ?? entry;
 }
 
 /**
@@ -92,7 +96,11 @@ export async function undoById(mirrorId: string): Promise<CalendarMirrorEntry> {
   }
 
   await undoCalendarEntry(entry.id);
-  return entry;
+  // Re-read the mirror so the returned entry reflects the undone: true state
+  // written by undoCalendarEntry — returning the pre-undo local variable would
+  // give callers a stale undone: false snapshot.
+  const updated = readCalendarMirror().find((e) => e.id === entry.id);
+  return updated ?? entry;
 }
 
 /**
