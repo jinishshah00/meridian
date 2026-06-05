@@ -103,12 +103,14 @@ function parseCommand(text: string, now: Date): ParsedCommand {
     working = working.replace(/\brename\b/i, "").trim();
   }
 
-  const newTime = extractTime(text, now) ?? undefined;
+  const parsedTime = extractTime(text, now);
 
   // Strip any time phrase residue from the target title
   const targetTitle = stripTimePhrases(working).replace(/\s+/g, " ").trim();
 
-  return { subtype, targetTitle: targetTitle || text.trim(), newTime };
+  const result: ParsedCommand = { subtype, targetTitle: targetTitle || text.trim() };
+  if (parsedTime !== null) result.newTime = parsedTime;
+  return result;
 }
 
 // ─── Time extraction ───────────────────────────────────────────────────────────
