@@ -811,11 +811,8 @@ describe("mirror state transitions for undone field", () => {
   });
 
   it("handles reminder entries (isReminder: true) in mirror state", () => {
-    const reminder = makeEntry({
-      id: "reminder-test",
-      isReminder: true,
-      endAt: undefined,
-    });
+    const { endAt: _unused, ...reminderBase } = makeEntry({ id: "reminder-test", isReminder: true });
+    const reminder: CalendarMirrorEntry = reminderBase;
     writeCalendarMirror([reminder]);
 
     // Update reminder to undone
