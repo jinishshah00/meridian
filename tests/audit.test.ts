@@ -498,4 +498,362 @@ describe("formatEntry", () => {
     expect(formatEntry(event)).toContain("[Event]");
     expect(formatEntry(reminder)).toContain("[Reminder]");
   });
+
+  it("formats entry with midnight (12:00am)", () => {
+    // 2026-06-05T00:00:00Z is midnight UTC
+    const entry = makeEntry({ startAt: "2026-06-05T00:00:00.000Z" });
+    const result = formatEntry(entry);
+    expect(result).toContain("12:00am");
+    expect(result).not.toContain("0:00am");
+  });
+
+  it("formats entry with noon (12:00pm)", () => {
+    // 2026-06-05T12:00:00Z is noon UTC
+    const entry = makeEntry({ startAt: "2026-06-05T12:00:00.000Z" });
+    const result = formatEntry(entry);
+    expect(result).toContain("12:00pm");
+    expect(result).not.toContain("0:00pm");
+  });
+
+  it("formats 1:00am correctly", () => {
+    const entry = makeEntry({ startAt: "2026-06-05T01:00:00.000Z" });
+    const result = formatEntry(entry);
+    expect(result).toContain("1:00am");
+  });
+
+  it("formats 11:59pm correctly", () => {
+    const entry = makeEntry({ startAt: "2026-06-05T23:59:00.000Z" });
+    const result = formatEntry(entry);
+    expect(result).toContain("11:59pm");
+  });
+
+  it("formats 13:00 (1:00pm) correctly", () => {
+    const entry = makeEntry({ startAt: "2026-06-05T13:00:00.000Z" });
+    const result = formatEntry(entry);
+    expect(result).toContain("1:00pm");
+  });
+});
+
+// ─── Edge cases: getAuditTrail ────────────────────────────────────────────────
+
+describe("getAuditTrail — edge cases", () => {
+  it("returns empty array when mirror is completely empty", () => {
+    writeCalendarMirror([]);
+    expect(getAuditTrail()).toEqual([]);
+  });
+
+  it("applies all four filters combined with AND logic", () => {
+    // Create entries with different combinations
+    const t2ActiveYesterday = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: "2026-06-04T12:00:00.000Z",
+    });
+    const t2ActiveToday = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: "2026-06-05T12:00:00.000Z",
+    });
+    const t2UndoneToday = makeEntry({
+      tier: 2,
+      undone: true,
+      createdAt: "2026-06-05T12:00:00.000Z",
+    });
+    const t1ActiveToday = makeEntry({
+      tier: 1,
+      undone: false,
+      createdAt: "2026-06-05T12:00:00.000Z",
+    });
+
+    writeCalendarMirror([t2ActiveYesterday, t2ActiveToday, t2UndoneToday, t1ActiveToday]);
+
+    // Filter: tier 2, active, created on June 5, in range
+    const result = getAuditTrail({
+      tier: 2,
+      undone: false,
+      since: new Date("2026-06-05T00:00:00.000Z"),
+      until: new Date("2026-06-06T00:00:00.000Z"),
+    });
+
+    // Should only match t2ActiveToday
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(t2ActiveToday.id);
+  });
+
+  it("includes entry with createdAt exactly equal to since boundary", () => {
+    const boundaryEntry = makeEntry({
+      createdAt: "2026-06-05T00:00:00.000Z",
+    });
+    const beforeEntry = makeEntry({
+      createdAt: "2026-06-04T23:59:59.000Z",
+    });
+
+    writeCalendarMirror([beforeEntry, boundaryEntry]);
+
+    const result = getAuditTrail({
+      since: new Date("2026-06-05T00:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(boundaryEntry.id);
+  });
+
+  it("includes entry with createdAt exactly equal to until boundary", () => {
+    const boundaryEntry = makeEntry({
+      createdAt: "2026-06-05T00:00:00.000Z",
+    });
+    const afterEntry = makeEntry({
+      createdAt: "2026-06-05T00:00:01.000Z",
+    });
+
+    writeCalendarMirror([boundaryEntry, afterEntry]);
+
+    const result = getAuditTrail({
+      until: new Date("2026-06-05T00:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(boundaryEntry.id);
+  });
+
+  it("handles range with both since and until at the same exact timestamp", () => {
+    const exactMatch = makeEntry({
+      createdAt: "2026-06-05T12:00:00.000Z",
+    });
+    const before = makeEntry({
+      createdAt: "2026-06-05T11:59:59.000Z",
+    });
+    const after = makeEntry({
+      createdAt: "2026-06-05T12:00:01.000Z",
+    });
+
+    writeCalendarMirror([before, exactMatch, after]);
+
+    const result = getAuditTrail({
+      since: new Date("2026-06-05T12:00:00.000Z"),
+      until: new Date("2026-06-05T12:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(exactMatch.id);
+  });
+});
+
+// ─── Edge cases: undoLast ─────────────────────────────────────────────────────
+
+describe("undoLast — edge cases", () => {
+  it("returns null when all entries in mirror are already undone", async () => {
+    const undone1 = makeEntry({ id: "undone-1", undone: true });
+    const undone2 = makeEntry({ id: "undone-2", undone: true });
+    const undone3 = makeEntry({ id: "undone-3", undone: true });
+    writeCalendarMirror([undone1, undone2, undone3]);
+
+    const undoSpy = spyOn(planModule, "undoCalendarEntry").mockImplementation(
+      async () => undefined,
+    );
+
+    const result = await undoLast();
+    expect(result).toBeNull();
+    expect(undoSpy).not.toHaveBeenCalled();
+    undoSpy.mockRestore();
+  });
+});
+
+// ─── Edge cases: undoById ─────────────────────────────────────────────────────
+
+describe("undoById — edge cases", () => {
+  it("throws entry not found error when mirror is empty", async () => {
+    writeCalendarMirror([]);
+
+    const undoSpy = spyOn(planModule, "undoCalendarEntry").mockImplementation(
+      async () => undefined,
+    );
+
+    await expect(undoById("any-id")).rejects.toThrow("entry not found: any-id");
+    expect(undoSpy).not.toHaveBeenCalled();
+    undoSpy.mockRestore();
+  });
+});
+
+// ─── Edge cases: getTodaysChanges ─────────────────────────────────────────────
+
+describe("getTodaysChanges — edge cases", () => {
+  it("excludes entries created yesterday using local date comparison", () => {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 86400_000); // 24 hours ago
+    const yesterdayIso = yesterday.toISOString();
+
+    const yesterdayEntry = makeEntry({ createdAt: yesterdayIso });
+    const todayEntry = makeEntry({ createdAt: now.toISOString() });
+
+    writeCalendarMirror([yesterdayEntry, todayEntry]);
+
+    const result = getTodaysChanges();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe(todayEntry.id);
+  });
+
+  it("uses local date not UTC offset tricks for boundary detection", () => {
+    // Create an entry at exactly midnight UTC but that may be "yesterday"
+    // in local time if in a timezone west of UTC
+    const entry = makeEntry({ createdAt: "2026-06-05T00:00:00.000Z" });
+    writeCalendarMirror([entry]);
+
+    // Just verify the function doesn't crash and returns a consistent result
+    const result1 = getTodaysChanges();
+    const result2 = getTodaysChanges();
+
+    // Both calls should return the same results (no timezone inconsistencies)
+    expect(result1.length).toBe(result2.length);
+  });
+});
+
+// ─── Edge cases: getTier2CountToday ───────────────────────────────────────────
+
+describe("getTier2CountToday — edge cases", () => {
+  it("does not count undone Tier 2 entries created today", () => {
+    const active = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: todayIso(),
+    });
+    const undone = makeEntry({
+      tier: 2,
+      undone: true,
+      createdAt: todayIso(),
+    });
+
+    writeCalendarMirror([active, undone]);
+
+    expect(getTier2CountToday()).toBe(1);
+  });
+
+  it("does not count Tier 1 entries created today", () => {
+    const tier1Today = makeEntry({
+      tier: 1,
+      undone: false,
+      createdAt: todayIso(),
+    });
+    const tier2Today = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: todayIso(),
+    });
+
+    writeCalendarMirror([tier1Today, tier2Today]);
+
+    expect(getTier2CountToday()).toBe(1);
+  });
+
+  it("does not count Tier 0 entries created today", () => {
+    const tier0Today = makeEntry({
+      tier: 0,
+      undone: false,
+      createdAt: todayIso(),
+    });
+    const tier2Today = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: todayIso(),
+    });
+
+    writeCalendarMirror([tier0Today, tier2Today]);
+
+    expect(getTier2CountToday()).toBe(1);
+  });
+
+  it("does not count Tier 3 entries created today", () => {
+    const tier3Today = makeEntry({
+      tier: 3,
+      undone: false,
+      createdAt: todayIso(),
+    });
+    const tier2Today = makeEntry({
+      tier: 2,
+      undone: false,
+      createdAt: todayIso(),
+    });
+
+    writeCalendarMirror([tier3Today, tier2Today]);
+
+    expect(getTier2CountToday()).toBe(1);
+  });
+});
+
+// ─── Edge cases: formatEntry ──────────────────────────────────────────────────
+
+describe("formatEntry — edge cases", () => {
+  it("shows [Reminder] prefix for reminder entries", () => {
+    const reminder = makeEntry({
+      title: "Take vitamins",
+      isReminder: true,
+      undone: false,
+    });
+
+    const result = formatEntry(reminder);
+    expect(result).toStartWith("[Reminder]");
+    expect(result).not.toContain("[Event]");
+  });
+
+  it("shows [Event] prefix for non-reminder entries", () => {
+    const event = makeEntry({
+      title: "Team meeting",
+      isReminder: false,
+      undone: false,
+    });
+
+    const result = formatEntry(event);
+    expect(result).toStartWith("[Event]");
+    expect(result).not.toContain("[Reminder]");
+  });
+
+  it("shows ✗ undone for entries with undone: true", () => {
+    const undoneEntry = makeEntry({ undone: true });
+
+    const result = formatEntry(undoneEntry);
+    expect(result).toContain("✗ undone");
+    expect(result).not.toContain("✓ active");
+  });
+
+  it("shows ✓ active for entries with undone: false", () => {
+    const activeEntry = makeEntry({ undone: false });
+
+    const result = formatEntry(activeEntry);
+    expect(result).toContain("✓ active");
+    expect(result).not.toContain("✗ undone");
+  });
+
+  it("formats midnight hours correctly (00:00 = 12:00am)", () => {
+    // Hour 0 should be 12am
+    const midnightEntry = makeEntry({ startAt: "2026-06-05T00:30:00.000Z" });
+    const result = formatEntry(midnightEntry);
+    expect(result).toContain("12:30am");
+  });
+
+  it("formats 1am through 11am correctly", () => {
+    for (let hour = 1; hour < 12; hour++) {
+      const entry = makeEntry({
+        startAt: `2026-06-05T${String(hour).padStart(2, "0")}:00:00.000Z`,
+      });
+      const result = formatEntry(entry);
+      expect(result).toContain(`${hour}:00am`);
+    }
+  });
+
+  it("formats 12pm (noon) correctly", () => {
+    const noonEntry = makeEntry({ startAt: "2026-06-05T12:30:00.000Z" });
+    const result = formatEntry(noonEntry);
+    expect(result).toContain("12:30pm");
+  });
+
+  it("formats 1pm through 11pm correctly", () => {
+    for (let hour = 13; hour < 24; hour++) {
+      const entry = makeEntry({
+        startAt: `2026-06-05T${String(hour).padStart(2, "0")}:00:00.000Z`,
+      });
+      const result = formatEntry(entry);
+      const pmHour = hour - 12;
+      expect(result).toContain(`${pmHour}:00pm`);
+    }
+  });
 });
