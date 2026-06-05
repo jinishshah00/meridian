@@ -1,3 +1,14 @@
+// NOTE: This file is a convenience script for batch processing and testing.
+// It is NOT the primary interface for the personal assistant.
+//
+// The correct architecture is:
+//   Claude Code = the assistant (conversation, reasoning, routing)
+//   src/tools/  = thin CLI wrappers that Claude Code calls via `bun run`
+//   CLAUDE.md   = the assistant's brain (instructions to Claude Code)
+//
+// Jimmy talks to Claude Code directly. Claude Code calls `bun run src/tools/<tool>.ts`
+// when it needs to read or write data.
+
 import { route } from "./router.js";
 import { readTasks } from "./storage.js";
 import { execute } from "./execute.js";
