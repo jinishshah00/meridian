@@ -563,3 +563,245 @@ describe("applyConfigMessage", () => {
     expect(summary).toContain("no changes");
   });
 });
+
+// ──── EDGE-CASE TESTS (QA) ──────────────────────────────────────────────────────
+
+describe("isInAllowedWindow — overnight edge cases", () => {
+  it("includes exactly at midnight (00:00) in overnight window 23:00–07:00", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "23:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    const midnight = localDate(2026, 6, 8, 0, 0);
+    expect(isInAllowedWindow(midnight, policy)).toBe(true);
+  });
+
+  it("includes 00:01 (just after midnight) in overnight window 23:00–07:00", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "23:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    const justAfterMidnight = localDate(2026, 6, 8, 0, 1);
+    expect(isInAllowedWindow(justAfterMidnight, policy)).toBe(true);
+  });
+
+  it("excludes 07:00 (boundary, half-open) in overnight window 23:00–07:00", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "23:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    const sevenAm = localDate(2026, 6, 8, 7, 0);
+    expect(isInAllowedWindow(sevenAm, policy)).toBe(false);
+  });
+
+  it("excludes 22:59 (before start) in overnight window 23:00–07:00", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "23:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    const almostMidnight = localDate(2026, 6, 8, 22, 59);
+    expect(isInAllowedWindow(almostMidnight, policy)).toBe(false);
+  });
+});
+
+describe("findNextSlot — zero allowed windows", () => {
+  it("treats all hours as allowed when allowedWindows is empty", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [],
+      blackoutWindows: [],
+    };
+    const monday9am = localDate(2026, 6, 8, 9, 0);
+    const slot = findNextSlot(monday9am, 30, policy, []);
+    expect(slot).not.toBeNull();
+    if (slot) {
+      // Slot should be found (within 7 days)
+      const daysDiff = (slot.getTime() - monday9am.getTime()) / (24 * 60 * 60 * 1000);
+      expect(daysDiff).toBeLessThanOrEqual(7);
+    }
+  });
+});
+
+describe("findNextSlot — daily cap exhaustion", () => {
+  it("rolls to next day when dailyCap is exhausted today", () => {
+    const policy: PolicyConfig = { ...emptyPolicy, dailyCap: 2 };
+    const monday9am = localDate(2026, 6, 8, 9, 0);
+    // Two existing events on Monday (cap is 2)
+    const existingEvents = [
+      {
+        startAt: localDate(2026, 6, 8, 9, 0),
+        endAt: localDate(2026, 6, 8, 10, 0),
+      },
+      {
+        startAt: localDate(2026, 6, 8, 11, 0),
+        endAt: localDate(2026, 6, 8, 12, 0),
+      },
+    ];
+    const slot = findNextSlot(monday9am, 30, policy, existingEvents);
+    expect(slot).not.toBeNull();
+    if (slot) {
+      // Slot should be on Tuesday (date > 8)
+      expect(slot.getDate()).toBeGreaterThan(8);
+    }
+  });
+});
+
+describe("findNextSlot — cross-midnight slot", () => {
+  it("handles 90-minute slot starting at 23:15 inside overnight window 22:00–07:00", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "22:00", end: "07:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    const startTime = localDate(2026, 6, 8, 23, 15);
+    const slot = findNextSlot(startTime, 90, policy, []);
+    expect(slot).not.toBeNull();
+    if (slot) {
+      // Verify slot spans across midnight — it either succeeds or falls back gracefully
+      // The implementation should handle this correctly (check both start and end minute before end)
+      const slotEnd = new Date(slot.getTime() + 90 * 60 * 1000);
+      // Both start and end should be valid — start must be in window
+      expect(isInAllowedWindow(slot, policy)).toBe(true);
+      // End - 1 minute must also be in window (half-open interval check in implementation)
+      const oneMinBeforeEnd = new Date(slotEnd.getTime() - 60 * 1000);
+      expect(isInAllowedWindow(oneMinBeforeEnd, policy)).toBe(true);
+    }
+  });
+});
+
+describe("applyConfigMessage — AM/PM variants", () => {
+  it("parses uppercase AM/PM: 'work hours are 9AM-5PM Mon-Fri'", () => {
+    const { updated } = applyConfigMessage(
+      "work hours are 9AM-5PM Mon-Fri",
+      emptyPolicy
+    );
+    const w = updated.allowedWindows[0];
+    expect(w).toBeDefined();
+    expect(w?.start).toBe("09:00");
+    expect(w?.end).toBe("17:00");
+  });
+
+  it("parses colon-minute format with AM/PM: 'work hours are 9:00am-5:30pm Mon-Fri'", () => {
+    const { updated } = applyConfigMessage(
+      "work hours are 9:00am-5:30pm Mon-Fri",
+      emptyPolicy
+    );
+    const w = updated.allowedWindows[0];
+    expect(w).toBeDefined();
+    expect(w?.start).toBe("09:00");
+    expect(w?.end).toBe("17:30");
+  });
+
+  it("parses 'sleep 10:30pm to 6:30am' with colon-minute format", () => {
+    const { updated } = applyConfigMessage(
+      "sleep 10:30pm to 6:30am",
+      emptyPolicy
+    );
+    const w = updated.blackoutWindows.find((b) => b.start === "22:30");
+    expect(w).toBeDefined();
+    expect(w?.end).toBe("06:30");
+  });
+});
+
+describe("applyConfigMessage — idempotency", () => {
+  it("applying same config message twice does not duplicate allowed window", () => {
+    const config1 = applyConfigMessage(
+      "work hours are 9am-6pm Mon-Fri",
+      emptyPolicy
+    ).updated;
+    const config2 = applyConfigMessage(
+      "work hours are 9am-6pm Mon-Fri",
+      config1
+    ).updated;
+    // Should still have exactly 1 weekday allowed window, not 2
+    const weekdayWindows = config2.allowedWindows.filter(
+      (w) => JSON.stringify([...w.days].sort()) === JSON.stringify([1, 2, 3, 4, 5])
+    );
+    expect(weekdayWindows).toHaveLength(1);
+    expect(weekdayWindows[0]?.start).toBe("09:00");
+    expect(weekdayWindows[0]?.end).toBe("18:00");
+  });
+});
+
+describe("validateConfig — empty days array on TimeWindow", () => {
+  it("rejects allowedWindow with empty days array", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [{ start: "09:00", end: "17:00", days: [] }],
+    };
+    const errors = validateConfig(policy);
+    expect(errors.some((e) => e.includes("days must not be empty"))).toBe(true);
+  });
+
+  it("rejects blackoutWindow with empty days array", () => {
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      blackoutWindows: [{ start: "23:00", end: "07:00", days: [] }],
+    };
+    const errors = validateConfig(policy);
+    expect(errors.some((e) => e.includes("days must not be empty"))).toBe(true);
+  });
+});
+
+describe("validateConfig — bufferMinutes: 0", () => {
+  it("allows bufferMinutes === 0 (valid per spec: >= 0)", () => {
+    const policy: PolicyConfig = { ...emptyPolicy, bufferMinutes: 0 };
+    const errors = validateConfig(policy);
+    const bufferError = errors.find((e) => e.includes("bufferMinutes"));
+    expect(bufferError).toBeUndefined();
+  });
+});
+
+describe("findNextSlot — returns null after 7 days", () => {
+  it("returns null when search extends beyond 7-day deadline", () => {
+    // Use a very restrictive window that only allows 1 day, and search for 8 days
+    const policy: PolicyConfig = {
+      ...emptyPolicy,
+      allowedWindows: [
+        { start: "09:00", end: "17:00", days: [1] }, // Only Monday allowed
+      ],
+      dailyCap: 1,
+    };
+    // Start on Tuesday (after the only allowed Monday)
+    const tuesday = localDate(2026, 6, 9, 9, 0);
+    // Next Monday is June 15, which is 6 days away — still within 7-day window
+    // So let's use a more direct approach: fill dailyCap for all allowed windows within search range
+    const monday1 = localDate(2026, 6, 8, 9, 0); // June 8 is Monday (allowed)
+    const existing = [
+      {
+        startAt: localDate(2026, 6, 8, 9, 0),
+        endAt: localDate(2026, 6, 8, 10, 0),
+      }, // Fills Monday dailyCap
+    ];
+    const slot = findNextSlot(monday1, 60, policy, existing);
+    // Should look for next Monday (June 15) which is outside 7-day window from June 8
+    expect(slot).toBeNull();
+  });
+});
+
+describe("applyConfigMessage — multiple invocations with blackout merging", () => {
+  it("applies 'no meetings before 9am' then 'no meetings before 10am' and merges correctly", () => {
+    let config = emptyPolicy;
+    const { updated: step1 } = applyConfigMessage(
+      "no meetings before 9am",
+      config
+    );
+    // step1 should have a blackout 00:00–09:00
+    expect(
+      step1.blackoutWindows.some((w) => w.start === "00:00" && w.end === "09:00")
+    ).toBe(true);
+
+    const { updated: step2 } = applyConfigMessage(
+      "no meetings before 10am",
+      step1
+    );
+    // step2 should have replaced (not added a second)
+    // Implementation merges by filtering windows with same days and start time
+    const count00 = step2.blackoutWindows.filter(
+      (w) => w.start === "00:00" && w.days.length === 7
+    ).length;
+    // May have 00:00–09:00 and 00:00–10:00 (both exist) or just 00:00–10:00 depending on merge logic
+    // The spec says merging replaces windows with same (days, start)
+    // Both have start "00:00" and days [0..6], so only one should remain
+    expect(count00).toBeLessThanOrEqual(1);
+  });
+});
