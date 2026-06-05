@@ -469,8 +469,9 @@ describe("concurrent append safety", () => {
       processed: false,
     }));
 
-    appendInboxEntry(entries[0]);
-    appendInboxEntry(entries[1]);
+    // entries[0] and entries[1] are always defined — Array.from with length 2
+    appendInboxEntry(entries[0]!);
+    appendInboxEntry(entries[1]!);
 
     const inbox = readInbox();
     expect(inbox).toHaveLength(2);
