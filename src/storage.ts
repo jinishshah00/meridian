@@ -69,6 +69,16 @@ export function writeActivityLog(entries: ActivityEntry[]): void {
   atomicWrite(dataPath("activity-log.json"), entries);
 }
 
+/**
+ * Convenience: append a single ActivityEntry without the caller needing to
+ * read-modify-write the full array.
+ */
+export function appendActivityEntry(entry: ActivityEntry): void {
+  const current = readActivityLog();
+  current.push(entry);
+  writeActivityLog(current);
+}
+
 // ─── Calendar Mirror ──────────────────────────────────────────────────────────
 
 export function readCalendarMirror(): CalendarMirrorEntry[] {
