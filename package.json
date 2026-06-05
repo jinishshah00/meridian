@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "typescript": "^5.4.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "latest"
   }
 }

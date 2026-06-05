@@ -322,7 +322,7 @@ describe("atomic write", () => {
   it("leaves no .tmp file on disk after a successful write", () => {
     writeTasks([]);
     const files = readdirSync(TEST_DATA_DIR);
-    const tmpFiles = files.filter((f) => f.endsWith(".tmp"));
+    const tmpFiles = files.filter((f: string) => f.endsWith(".tmp"));
     expect(tmpFiles).toHaveLength(0);
   });
 

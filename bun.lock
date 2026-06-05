@@ -6,6 +6,7 @@
       "name": "personal-assistant",
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/node": "latest",
         "typescript": "^5.4.0",
       },
     },
