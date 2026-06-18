@@ -52,7 +52,25 @@ Append-only log of<br/>what you actually did.
 
 ---
 
-## Quick start
+## Setup
+
+### 1 — Install prerequisites
+
+**Claude Code** (the AI brain):
+```bash
+npm install -g @anthropic/claude-code
+```
+Needs an [Anthropic API key](https://console.anthropic.com) — set it once:
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+```
+
+**Bun** (the runtime):
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+### 2 — Clone and install
 
 ```bash
 git clone https://github.com/jinishshah00/meridian
@@ -60,20 +78,31 @@ cd meridian
 bun install
 ```
 
-Grant macOS permissions once:
+### 3 — Grant macOS permissions
+
+Meridian writes to Apple Calendar and Reminders via `osascript`. macOS will prompt for access the first time — trigger it manually:
+
 ```bash
 osascript -e 'tell application "Calendar" to return name of first calendar'
 osascript -e 'tell application "Reminders" to return name of first list'
 ```
 
-Then just open Claude Code and talk:
+If it doesn't prompt: **System Settings → Privacy & Security → Automation** → find Terminal → enable Calendar and Reminders.
+
+### 4 — Start talking
+
 ```bash
+cd meridian
 claude
 ```
+
+That's it. Just talk:
 
 > "remind me to call dentist at 3pm"  
 > "just finished the Q3 roadmap"  
 > "what's on my list today?"
+
+Your `data/` folder is created automatically on first use. Everything stays local.
 
 ---
 
@@ -107,10 +136,13 @@ Meridian never acts silently. Every creation is gated:
 
 ## Requirements
 
-- Mac (Apple Silicon or Intel)
-- [Claude Code](https://github.com/anthropics/claude-code) CLI
-- [Bun](https://bun.sh) runtime
-- macOS Automation permission for Calendar + Reminders
+| | |
+|---|---|
+| Mac | Apple Silicon or Intel, macOS 13+ |
+| [Claude Code](https://github.com/anthropics/claude-code) | `npm install -g @anthropic/claude-code` |
+| [Anthropic API key](https://console.anthropic.com) | Free tier works for personal use |
+| [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install \| bash` |
+| macOS Automation | Calendar + Reminders access for Terminal |
 
 ---
 
