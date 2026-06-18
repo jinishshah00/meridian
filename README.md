@@ -1,137 +1,141 @@
-# Meridian
+<img src="https://capsule-render.vercel.app/api?type=soft&color=gradient&customColorList=11,20,24&height=180&section=header&text=meridian&fontSize=80&fontColor=ffffff&animation=fadeIn&fontAlignY=55&desc=your%20brain%2C%20backed%20up&descAlignY=78&descSize=20" width="100%"/>
 
-Your Claude-powered chief of staff — text or voice, local files only.
+<div align="center">
 
-## The problem
+<img src="https://readme-typing-svg.demolab.com/?font=Fira+Code&weight=500&size=18&duration=2800&pause=1000&color=7DD3FC&center=true&vCenter=true&width=580&height=42&lines=%22remind+me+to+call+dentist+at+3pm%22;%22just+finished+the+Q3+roadmap%22;%22what%27s+on+my+list+today%3F%22;%22I+need+to+learn+Rust%22;%22block+2+hours+Friday+for+deep+work%22" alt="Typing SVG" />
 
-You finally sit down to work and hit brain fog: _What was I supposed to do today? Did I finish that thing? What did I say I'd do this week?_ 
-
-Meridian captures everything in the moment — by voice from your iPhone (via Claude mobile) or by typing to Claude Code on your Mac. It keeps it all in plain JSON files. No app. No subscription. No dashboard. Just your calendar, reminders, and task list staying in sync.
-
-## What it does
-
-| Layer | What it captures | Where it lives |
-|---|---|---|
-| **Intent** | Tasks you want to do but haven't scheduled | `data/tasks.json` |
-| **Plan** | Time-boxed appointments and point alerts | Apple Calendar + Apple Reminders |
-| **Reality** | Append-only log of what you actually did | `data/activity-log.json` |
-
-Talk to Meridian like a chief of staff:
-- **"I'm at the gym"** → logs to reality
-- **"Finish the report"** → adds to task backlog
-- **"Call Sarah at 2pm tomorrow"** → proposes a calendar event (you confirm)
-- **"Remind me to pay rent on the 1st"** → sets a reminder
-
-Meridian parses tense and time, routes your message to the right layer, and handles the details.
-
-## How it works
-
-```
-You (text or voice)
-    ↓
-Claude Code (reads CLAUDE.md, reasons about your message)
-    ↓
-src/tools/ (thin CLI wrappers: create-task, log-reality, create-event, etc.)
-    ↓
-data/ (plain JSON files — all local)
-Apple Calendar + Reminders (written via osascript)
-```
-
-No server. No cloud. No secrets. Everything lives on your Mac in plain text.
-
-## Setup
-
-### Requirements
-- Mac (Intel or Apple Silicon)
-- [Claude Code](https://github.com/anthropics/claude-code) CLI installed
-- [Bun](https://bun.sh) runtime (`~/.bun/bin/bun`)
-- macOS automation permissions (2-minute one-time setup)
-
-### Grant Calendar + Reminders permissions
-
-Open Terminal and run:
-```bash
-osascript -e 'tell application "Calendar" to return name of first calendar'
-```
-
-macOS will ask for permission once. Grant it.
-
-Then verify Reminders:
-```bash
-osascript -e 'tell application "Reminders" to return name of first list'
-```
-
-### Install and run
-
-```bash
-git clone <repo-url> meridian
-cd meridian
-bun install
-claude
-```
-
-In the Claude Code chat, just talk:
-
-> "I'm working on the Q3 roadmap"
-
-> "remind me to check slack at 3pm today"
-
-> "drop the grocery shopping task"
-
-## Input examples and what happens
-
-| You say | Layer | Result |
-|---|---|---|
-| "I'm at the gym" | Reality | Logs timestamp + message to `data/activity-log.json` |
-| "learn Rust" | Intent | Creates task `learn Rust` in `data/tasks.json` |
-| "breakfast at 8:30 tomorrow" | Plan | Proposes calendar event, you confirm → writes to Calendar |
-| "call dad on the 20th" | Plan | Proposes reminder, you confirm → writes to Reminders |
-| "what am I up to?" | — | Reads `current-state.json`, tells you activity + timestamp |
-| "drop that task" | Intent | Removes task from `data/tasks.json` |
-
-## Autonomy model
-
-Meridian never silently acts. Every creation goes through tiers:
-
-| Tier | When | Behaviour |
-|---|---|---|
-| 0 | Reality pings only | No calendar action |
-| 1 | One-off events or reminders (default) | Propose → you approve → execute |
-| 2 | Explicit recurring tasks | Auto-schedule (Tier 2 only for declared recurrences) |
-| 3 | Irreversible or people-affecting | Always ask, never auto |
-
-New appointments and reminders default to Tier 1 (proposal mode). You see what would happen before it hits your calendar.
-
-## Data privacy
-
-- **Everything stays local.** No cloud sync. No analytics. No servers.
-- **Plain JSON files.** Gitignored `data/` directory. Human-readable. Portable.
-- **Apple Calendar and Reminders are the source of truth** for Plan layer. Meridian mirrors them in `data/calendar-mirror.json` for audit trail only.
-- **No authentication beyond local system access.** Meridian uses osascript (already on your Mac) to read/write Calendar and Reminders.
-
-## Troubleshooting
-
-**"Permission denied" when creating calendar events?**
-Grant Reminders and Calendar access to Terminal in System Settings → Privacy & Security → Automation.
-
-**"event created" but it didn't show up in Calendar?**
-Check `data/calendar-mirror.json` to confirm it was written. If it's there, restart Calendar app and refresh.
-
-**"I want to reset everything"**
-Delete `data/` and restart. Your data files are plain JSON—back them up first if you want.
-
-**Which calendar does it write to?**
-By default, your primary calendar (usually "Calendar"). Customize in `data/policy.json` with a `defaultCalendar` field.
-
-## Architecture reference
-
-- `src/tools/` — CLI entry points (create-task, log-reality, create-event, etc.)
-- `src/lib/` — Core logic (data access, scheduling, Apple integration)
-- `CLAUDE.md` — Meridian's decision tree and routing rules (Claude Code reads this)
-- `data/` — Local JSON files (tasks, activity log, calendar mirror, policy)
-
-For implementation details, see `CLAUDE.md` (the Claude Code brain).
+</div>
 
 ---
 
-Built for the lazy. For people who write everything down because they forget it the moment they start work.
+You finally sit down to work. Brain fog hits. _What was I supposed to do? Did I finish that thing? What did I say I'd handle this week?_
+
+Meridian is a Claude Code-powered personal assistant that lives in your terminal. Talk to it like a chief of staff. It routes your words into the right layer, writes to Apple Calendar and Reminders, and keeps a log of what you actually did — all in plain files on your Mac.
+
+No app. No subscription. No dashboard.
+
+---
+
+## Three layers
+
+<table>
+<tr>
+<td align="center" width="33%">
+
+**INTENT**
+
+Things you want to do,<br/>no time attached yet.
+
+`data/tasks.json`
+
+</td>
+<td align="center" width="33%">
+
+**PLAN**
+
+Time-boxed commitments<br/>written to Apple Calendar<br/>and Reminders.
+
+`data/calendar-mirror.json`
+
+</td>
+<td align="center" width="33%">
+
+**REALITY**
+
+Append-only log of<br/>what you actually did.
+
+`data/activity-log.json`
+
+</td>
+</tr>
+</table>
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/jinishshah00/meridian
+cd meridian
+bun install
+```
+
+Grant macOS permissions once:
+```bash
+osascript -e 'tell application "Calendar" to return name of first calendar'
+osascript -e 'tell application "Reminders" to return name of first list'
+```
+
+Then just open Claude Code and talk:
+```bash
+claude
+```
+
+> "remind me to call dentist at 3pm"  
+> "just finished the Q3 roadmap"  
+> "what's on my list today?"
+
+---
+
+## What you say → what happens
+
+| You say | Goes to | Result |
+|---|---|---|
+| `"I'm at the gym"` | Reality | Timestamped entry in activity log |
+| `"learn Rust"` | Intent | Task added to backlog |
+| `"call Sarah at 2pm tomorrow"` | Plan | Proposes calendar event — you confirm |
+| `"remind me to pay rent on the 1st"` | Plan | Sets Apple Reminder |
+| `"what am I up to?"` | — | Last known activity + staleness |
+| `"drop the dentist task"` | Intent | Removed from backlog |
+
+Meridian reads tense and time presence to decide the layer. Ambiguous input gets one clarifying question, never a silent guess.
+
+---
+
+## Autonomy tiers
+
+Meridian never acts silently. Every creation is gated:
+
+| Tier | Behaviour | Used for |
+|---|---|---|
+| **0** | Log only | Reality pings, freeform notes |
+| **1** | Propose → you confirm | All new events and reminders (default) |
+| **2** | Auto-schedule + notify | Explicit declared recurrences only |
+| **3** | Never auto | Irreversible, people-affecting, money |
+
+---
+
+## Requirements
+
+- Mac (Apple Silicon or Intel)
+- [Claude Code](https://github.com/anthropics/claude-code) CLI
+- [Bun](https://bun.sh) runtime
+- macOS Automation permission for Calendar + Reminders
+
+---
+
+## Built with
+
+<div align="center">
+
+[![Skills](https://skillicons.dev/icons?i=ts,bun,apple&perline=3)](https://skillicons.dev)
+
+</div>
+
+---
+
+## Data + privacy
+
+Everything stays on your Mac. The `data/` directory is gitignored. Plain JSON, human-readable, portable. Apple Calendar and Reminders are the source of truth for the Plan layer — Meridian only mirrors writes locally for audit and undo.
+
+No auth. No API keys. No cloud.
+
+---
+
+<div align="center">
+
+*built for the lazy — and the ones who forget everything the moment they finally have time*
+
+</div>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=11,20,24&height=120&section=footer" width="100%"/>
