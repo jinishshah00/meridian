@@ -86,20 +86,30 @@ osascript -e 'tell application "Reminders" to return name of first list'
 
 If it doesn't prompt: **System Settings → Privacy & Security → Automation** → find Terminal → enable Calendar and Reminders.
 
-### 4 — Start talking
+### 4 — Start talking on Mac
 
 ```bash
 cd meridian
 claude
 ```
 
-That's it. Just talk:
+Just talk:
 
 > "remind me to call dentist at 3pm"  
 > "just finished the Q3 roadmap"  
 > "what's on my list today?"
 
 Your `data/` folder is created automatically on first use. Everything stays local.
+
+### 5 — Use from iPhone (optional)
+
+Run Meridian remotely from the Claude mobile app on your iPhone. Inside the Claude Code session, run:
+
+```
+/remote-control
+```
+
+This gives you a link you open in the Claude iOS app. From that point you can talk to Meridian by voice or text from your phone — same assistant, same local data on your Mac, no extra infrastructure.
 
 ---
 
