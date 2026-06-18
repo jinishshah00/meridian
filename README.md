@@ -59,10 +59,7 @@ Append-only log of<br/>what you actually did.
 **Claude Code** (the AI brain):
 ```bash
 npm install -g @anthropic/claude-code
-```
-Needs an [Anthropic API key](https://console.anthropic.com) — set it once:
-```bash
-export ANTHROPIC_API_KEY=your_key_here
+claude auth login
 ```
 
 **Bun** (the runtime):
@@ -140,7 +137,6 @@ Meridian never acts silently. Every creation is gated:
 |---|---|
 | Mac | Apple Silicon or Intel, macOS 13+ |
 | [Claude Code](https://github.com/anthropics/claude-code) | `npm install -g @anthropic/claude-code` |
-| [Anthropic API key](https://console.anthropic.com) | Free tier works for personal use |
 | [Bun](https://bun.sh) | `curl -fsSL https://bun.sh/install \| bash` |
 | macOS Automation | Calendar + Reminders access for Terminal |
 
