@@ -42,6 +42,7 @@ export type CalendarMirrorEntry = {
   tier: 0 | 1 | 2 | 3; // autonomy tier that created it
   createdAt: string;
   undone: boolean;
+  completedByUser?: string; // ISO 8601 — set when user marks reminder complete in Reminders app
 };
 
 // ─── CurrentState ─────────────────────────────────────────────────────────────

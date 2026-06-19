@@ -76,6 +76,12 @@ bun run src/tools/undo-last.ts
 ```
 Output: `undone: <title> — <time>` or `nothing to undo`
 
+### Sync reminder completions from Reminders app
+```bash
+bun run src/tools/sync-reminders.ts
+```
+Output: `reminders in sync — no completions detected` or `synced: N reminder(s) marked completed by user`
+
 ### Get audit trail
 ```bash
 bun run src/tools/audit.ts
@@ -109,7 +115,7 @@ Config lives in `data/policy.json`. Key fields:
 - `blackoutWindows` — time ranges that are always blocked
 - `bufferMinutes` — minimum gap between scheduled blocks
 - `dailyCap` — max Tier 2 auto-schedules per day
-- `staleAfterHours` — how long before `current-state.json` is considered stale (default: 12)
+- `staleAfterHours` — how long before `current-state.json` is considered stale (default: 8)
 
 Never double-book. Check `data/calendar-mirror.json` before creating any Plan entry.
 
@@ -125,6 +131,12 @@ All data lives in `data/` (gitignored). Override with `PERSONAL_ASSISTANT_DATA_D
 | `data/calendar-mirror.json` | `CalendarMirrorEntry[]` | Audit trail of all Plan-layer writes |
 | `data/current-state.json` | `CurrentState` | Last known reality ping |
 | `data/policy.json` | `PolicyConfig` | Scheduling policy |
+
+## Reminder freshness rule
+
+Before listing or discussing active reminders (e.g. "what reminders do I have?", "what's due?", any summary that includes reminders), always run `sync-reminders` first. This pulls live completion status from the Reminders app and marks anything the user completed directly as `completedByUser` in the mirror. Never report a reminder as active without syncing first.
+
+A reminder is **active** only when both `undone: false` and `completedByUser` is absent.
 
 ## Responding to Jimmy
 

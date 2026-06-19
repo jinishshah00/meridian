@@ -150,7 +150,11 @@ export function formatEntry(entry: CalendarMirrorEntry): string {
   const hours = rawHours === 0 ? 12 : rawHours > 12 ? rawHours - 12 : rawHours;
   const dateStr = `${weekday} ${month} ${day} at ${hours}:${minutes}${ampm}`;
 
-  const status = entry.undone ? "✗ undone" : "✓ active";
+  const status = entry.undone
+    ? "✗ undone"
+    : entry.completedByUser
+      ? "✓ completed by user"
+      : "✓ active";
 
   return `${type} ${entry.title} — ${dateStr} (Tier ${entry.tier}) ${status}`;
 }

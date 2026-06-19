@@ -112,7 +112,7 @@ const DEFAULT_POLICY: PolicyConfig = {
   blackoutWindows: [],
   bufferMinutes: 15,
   dailyCap: 5,
-  staleAfterHours: 12,
+  staleAfterHours: 8,
   defaultPriority: 2,
 };
 

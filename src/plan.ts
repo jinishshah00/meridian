@@ -133,6 +133,26 @@ export function buildDeleteEventScript(externalId: string): string {
 }
 
 /**
+ * Returns the AppleScript that fetches the IDs of all incomplete reminders
+ * across every list. Output is AppleScript's default list-to-string coercion:
+ * items joined by ", " (handled by the caller).
+ */
+export function buildGetIncompleteReminderIdsScript(): string {
+  return [
+    `tell application "Reminders"`,
+    `  set incompleteIds to {}`,
+    `  repeat with lst in lists`,
+    `    set activeReminders to (every reminder of lst whose completed is false)`,
+    `    repeat with r in activeReminders`,
+    `      set end of incompleteIds to (id of r)`,
+    `    end repeat`,
+    `  end repeat`,
+    `  return incompleteIds`,
+    `end tell`,
+  ].join("\n");
+}
+
+/**
  * Returns the AppleScript to delete a Reminder by its id.
  */
 export function buildDeleteReminderScript(externalId: string): string {
@@ -421,4 +441,39 @@ export async function undoCalendarEntry(mirrorId: string): Promise<void> {
   const updated: CalendarMirrorEntry = { ...safeEntry, undone: true };
   mirror[idx] = updated;
   writeCalendarMirror(mirror);
+}
+
+/**
+ * Queries the Reminders app for all currently incomplete reminders and
+ * reconciles the mirror: any reminder entry whose externalId is no longer in
+ * the incomplete set is marked `completedByUser` with the current timestamp.
+ *
+ * Returns the number of mirror entries newly marked as completed.
+ */
+export async function syncReminderCompletions(): Promise<number> {
+  const mirror = readCalendarMirror();
+  const activeReminderEntries = mirror.filter(
+    (e) => e.isReminder && !e.undone && !e.completedByUser,
+  );
+  if (activeReminderEntries.length === 0) return 0;
+
+  const script = buildGetIncompleteReminderIdsScript();
+  const raw = await runOsascript(script);
+  // AppleScript coerces a list to string by joining items with ", "
+  const incompleteIds = new Set(
+    raw ? raw.split(", ").map((s) => s.trim()).filter(Boolean) : [],
+  );
+
+  const now = new Date().toISOString();
+  let count = 0;
+  for (const entry of mirror) {
+    if (!entry.isReminder || entry.undone || entry.completedByUser) continue;
+    if (!incompleteIds.has(entry.externalId)) {
+      entry.completedByUser = now;
+      count++;
+    }
+  }
+
+  if (count > 0) writeCalendarMirror(mirror);
+  return count;
 }
