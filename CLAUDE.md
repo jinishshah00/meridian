@@ -76,7 +76,13 @@ bun run src/tools/undo-last.ts
 ```
 Output: `undone: <title> — <time>` or `nothing to undo`
 
-### Sync reminder completions from Reminders app
+### List active reminders (syncs from Reminders app first)
+```bash
+bun run src/tools/list-reminders.ts
+```
+Output: bullet list of active reminders with local-time dates, or `no active reminders`
+
+### Sync reminder completions from Reminders app (low-level)
 ```bash
 bun run src/tools/sync-reminders.ts
 ```
@@ -134,9 +140,13 @@ All data lives in `data/` (gitignored). Override with `PERSONAL_ASSISTANT_DATA_D
 
 ## Reminder freshness rule
 
-Before listing or discussing active reminders (e.g. "what reminders do I have?", "what's due?", any summary that includes reminders), always run `sync-reminders` first. This pulls live completion status from the Reminders app and marks anything the user completed directly as `completedByUser` in the mirror. Never report a reminder as active without syncing first.
+To list or discuss active reminders, always use:
+```bash
+bun run src/tools/list-reminders.ts
+```
+This syncs completion status from the Reminders app first, then outputs active reminders in **system local time**. Never read `calendar-mirror.json` directly to display reminders — ISO timestamps in that file are UTC and will show wrong times.
 
-A reminder is **active** only when both `undone: false` and `completedByUser` is absent.
+A reminder is **active** only when `undone: false` AND `completedByUser` is absent. Do not display raw ISO strings to Jimmy; always use tool output for times.
 
 ## Responding to Jimmy
 

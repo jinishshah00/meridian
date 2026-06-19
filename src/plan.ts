@@ -133,21 +133,25 @@ export function buildDeleteEventScript(externalId: string): string {
 }
 
 /**
- * Returns the AppleScript that fetches the IDs of all incomplete reminders
- * across every list. Output is AppleScript's default list-to-string coercion:
- * items joined by ", " (handled by the caller).
+ * Returns the AppleScript that checks whether a specific reminder (by its
+ * Reminders app ID) is completed or still active.
+ * Returns "completed", "incomplete", or "not-found".
  */
-export function buildGetIncompleteReminderIdsScript(): string {
+export function buildCheckReminderCompletedScript(externalId: string): string {
+  const escaped = externalId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return [
     `tell application "Reminders"`,
-    `  set incompleteIds to {}`,
     `  repeat with lst in lists`,
-    `    set activeReminders to (every reminder of lst whose completed is false)`,
-    `    repeat with r in activeReminders`,
-    `      set end of incompleteIds to (id of r)`,
-    `    end repeat`,
+    `    set matchedReminders to (every reminder of lst whose id is "${escaped}")`,
+    `    if (count of matchedReminders) > 0 then`,
+    `      if completed of (item 1 of matchedReminders) then`,
+    `        return "completed"`,
+    `      else`,
+    `        return "incomplete"`,
+    `      end if`,
+    `    end if`,
     `  end repeat`,
-    `  return incompleteIds`,
+    `  return "not-found"`,
     `end tell`,
   ].join("\n");
 }
@@ -444,31 +448,29 @@ export async function undoCalendarEntry(mirrorId: string): Promise<void> {
 }
 
 /**
- * Queries the Reminders app for all currently incomplete reminders and
- * reconciles the mirror: any reminder entry whose externalId is no longer in
- * the incomplete set is marked `completedByUser` with the current timestamp.
+ * Checks each active reminder in the mirror individually against the Reminders
+ * app and marks completed/deleted ones as completedByUser.
+ *
+ * Per-reminder checks (vs. a bulk ID fetch) avoid false positives: a bulk
+ * empty result is indistinguishable from a permissions failure, which would
+ * incorrectly mark all reminders as completed.
  *
  * Returns the number of mirror entries newly marked as completed.
  */
 export async function syncReminderCompletions(): Promise<number> {
   const mirror = readCalendarMirror();
-  const activeReminderEntries = mirror.filter(
+  const activeReminders = mirror.filter(
     (e) => e.isReminder && !e.undone && !e.completedByUser,
   );
-  if (activeReminderEntries.length === 0) return 0;
-
-  const script = buildGetIncompleteReminderIdsScript();
-  const raw = await runOsascript(script);
-  // AppleScript coerces a list to string by joining items with ", "
-  const incompleteIds = new Set(
-    raw ? raw.split(", ").map((s) => s.trim()).filter(Boolean) : [],
-  );
+  if (activeReminders.length === 0) return 0;
 
   const now = new Date().toISOString();
   let count = 0;
   for (const entry of mirror) {
     if (!entry.isReminder || entry.undone || entry.completedByUser) continue;
-    if (!incompleteIds.has(entry.externalId)) {
+    const script = buildCheckReminderCompletedScript(entry.externalId);
+    const result = await runOsascript(script);
+    if (result === "completed" || result === "not-found") {
       entry.completedByUser = now;
       count++;
     }
